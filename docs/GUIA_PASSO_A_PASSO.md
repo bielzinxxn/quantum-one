@@ -1,234 +1,241 @@
-# Guia passo a passo (Windows + VPS nova + Binance)
+# Guia passo a passo: colocar o QUANTUM ONE para rodar na VPS
 
-Siga **na ordem**. Cada bloco cinza é um comando: copie, cole e aperte Enter.
-Se algo der erro, pare e me mande a mensagem de erro. **Nunca mande chaves, senhas ou o arquivo `.env`.**
+Este guia é para quem nunca fez isso. Faça na ordem, sem pular.
 
-Tempo total: cerca de 1h30. **Não precisa depositar dinheiro**: nesta etapa o sistema só LÊ dados.
+**Como usar os comandos:** cada bloco cinza é um comando. Copie, cole no terminal e aperte **Enter**. Espere terminar (o cursor volta a piscar) antes de ir para o próximo.
+
+**Regra de ouro:** nunca mande para ninguém, nem para o Claude, o conteúdo do arquivo `.env` ou da chave `private.pem`.
 
 ---
 
-## Parte 1 — Criar sua chave de acesso no Windows (5 min)
-É a "chave de casa" para entrar na VPS sem senha.
+## Parte 1 — Criar uma chave SSH no SEU computador (5 min)
 
-1. Aperte a tecla Windows, digite **PowerShell** e abra.
-2. Rode o comando abaixo e aperte Enter em todas as perguntas, para aceitar o local padrão. Se quiser, defina uma senha para a chave.
-```powershell
-ssh-keygen -t ed25519 -C "quantum-one"
+A chave SSH é como uma "senha que não se digita": serve para o seu computador entrar na VPS com segurança.
+
+1. **No Windows**, abra o **PowerShell**: tecla Windows, digite `powershell`, Enter. **No Mac**, abra o **Terminal**.
+2. Rode o comando abaixo e aperte **Enter** em todas as perguntas, deixando tudo em branco:
+```bash
+ssh-keygen -t ed25519
 ```
-3. Mostre a parte **pública** da chave e copie a linha inteira, que começa com `ssh-ed25519`:
-```powershell
-Get-Content $env:USERPROFILE\.ssh\id_ed25519.pub
+3. Mostre a chave **pública** (é seguro mostrar esta):
+```bash
+cat ~/.ssh/id_ed25519.pub
 ```
-O arquivo sem `.pub` é a parte **privada**. Esse você nunca envia para ninguém.
+4. Copie a linha inteira que aparecer, que começa com `ssh-ed25519`. Você vai usá-la na Parte 2.
 
 ---
 
-## Parte 2 — Contratar a VPS (15 min)
-Escolha um provedor que tenha datacenter em **São Paulo**, por exemplo a Vultr, que tem a região São Paulo. Confira preço e disponibilidade no site.
+## Parte 2 — Contratar a VPS (10 min)
 
-Configuração:
-- **Sistema:** Ubuntu 24.04 LTS
-- **Região:** São Paulo
-- **Plano:** 8 GB de RAM, 2 a 4 vCPU e 80 GB de SSD ou mais. Com 4 GB funciona, mas fica no limite.
-- **SSH Key:** cole a linha `ssh-ed25519 ...` da Parte 1. Isso é importante.
+Use qualquer provedor com **datacenter em São Paulo**, por exemplo Vultr, AWS (região `sa-east-1`) ou Hostinger. Na hora de criar o servidor, escolha:
 
-Depois de criada, anote o **IP** da VPS. Nos comandos abaixo, troque `SEU_IP` por ele.
+| Opção | Escolha |
+|---|---|
+| Sistema | **Ubuntu 24.04 LTS** |
+| Local | **São Paulo** |
+| Memória | **8 GB** (4 GB funciona, mas no limite) |
+| Disco | 80 GB ou mais |
+| Chave SSH | cole a linha `ssh-ed25519 ...` da Parte 1 |
+
+Quando o servidor estiver pronto, **anote o IP** (algo como `200.123.45.67`). No resto do guia, onde estiver `SEU_IP`, troque pelo IP de verdade.
 
 ---
 
-## Parte 3 — Configurar a VPS (20 min)
+## Parte 3 — Entrar na VPS e prepará-la (15 min)
 
-### 3.1 Primeiro acesso (no PowerShell)
-```powershell
+1. No PowerShell ou Terminal do **seu computador**:
+```bash
 ssh root@SEU_IP
 ```
-Na pergunta "Are you sure you want to continue connecting", digite `yes`. A partir daqui, os comandos rodam **dentro da VPS**.
+Se perguntar `Are you sure you want to continue connecting?`, digite `yes` e Enter. Agora você está **dentro da VPS**: os próximos comandos rodam nela.
 
-### 3.2 Atualizar e instalar o básico
+2. Atualize o sistema (pode levar alguns minutos):
 ```bash
-apt update && apt -y upgrade
+apt update && apt upgrade -y
 ```
+Se aparecer uma tela roxa perguntando sobre serviços, aperte **Enter**.
+
+3. Instale as ferramentas:
 ```bash
-apt install -y ufw fail2ban chrony unattended-upgrades git make python3
+apt install -y git make chrony ufw
 ```
 
-### 3.3 Criar seu usuário (não usar root no dia a dia)
-Defina uma senha quando pedir. As outras perguntas pode deixar em branco.
+4. Instale o Docker, usando o script oficial da própria Docker:
+```bash
+curl -fsSL https://get.docker.com | sh
+```
+
+5. Crie um usuário para o sistema (não é bom usar o `root` no dia a dia). Ele vai pedir uma senha: **crie uma forte e anote**. Nas outras perguntas, só Enter:
 ```bash
 adduser q1ops
 ```
 ```bash
-usermod -aG sudo q1ops
+usermod -aG sudo,docker q1ops
 ```
 ```bash
-mkdir -p /home/q1ops/.ssh && cp /root/.ssh/authorized_keys /home/q1ops/.ssh/ && chown -R q1ops:q1ops /home/q1ops/.ssh && chmod 700 /home/q1ops/.ssh && chmod 600 /home/q1ops/.ssh/authorized_keys
+rsync --archive --chown=q1ops:q1ops ~/.ssh /home/q1ops
 ```
 
-### 3.4 Testar o novo usuário ANTES de bloquear o root
-Abra **outra** janela do PowerShell, sem fechar a primeira, e rode:
-```powershell
-ssh q1ops@SEU_IP
+6. Ligue o firewall. Ele bloqueia tudo que vem de fora, menos o SSH:
+```bash
+ufw allow OpenSSH && ufw --force enable
 ```
-Só continue se esse login funcionou. Se não funcionou, volte na primeira janela e me avise.
 
-### 3.5 Firewall e segurança do SSH (na janela do q1ops)
-```bash
-sudo ufw allow OpenSSH && sudo ufw --force enable
-```
-```bash
-printf 'PasswordAuthentication no\nPermitRootLogin no\n' | sudo tee /etc/ssh/sshd_config.d/00-quantum.conf
-```
-```bash
-sudo sshd -t && sudo systemctl restart ssh
-```
-Confira o relógio. O "System time" precisa estar perto de 0 segundos:
+7. Confira o relógio, que precisa estar certo para a Binance aceitar as requisições:
 ```bash
 chronyc tracking
 ```
+Procure a linha `System time`: o número precisa ser bem pequeno, como `0.000123 seconds`.
 
-### 3.6 Instalar o Docker (repositório oficial)
+8. Saia da VPS:
 ```bash
-sudo install -m 0755 -d /etc/apt/keyrings && sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc && sudo chmod a+r /etc/apt/keyrings/docker.asc
+exit
 ```
-```bash
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-```
-```bash
-sudo apt update && sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-```
-```bash
-sudo usermod -aG docker q1ops
-```
-Saia (`exit`) e entre de novo com `ssh q1ops@SEU_IP`, para a permissão do Docker valer. Teste:
-```bash
-docker run --rm hello-world
-```
-O esperado é aparecer "Hello from Docker!".
 
 ---
 
-## Parte 4 — Baixar e subir o sistema (20 min)
+## Parte 4 — Entrar com o usuário novo e baixar o projeto (10 min)
 
-### 4.1 Dar à VPS permissão de LER o repositório privado
-Crie uma chave só para isso:
+1. No **seu computador**:
 ```bash
-ssh-keygen -t ed25519 -f ~/.ssh/github_quantum -N "" -C "vps-quantum"
-```
-```bash
-cat ~/.ssh/github_quantum.pub
-```
-Copie a linha. No GitHub, abra o repositório **quantum-one**, vá em **Settings → Deploy keys → Add deploy key**, cole a linha e deixe **"Allow write access" DESMARCADO**. Salve.
-
-Agora diga à VPS para usar essa chave com o GitHub:
-```bash
-printf 'Host github.com\n  IdentityFile ~/.ssh/github_quantum\n  IdentitiesOnly yes\n' >> ~/.ssh/config && chmod 600 ~/.ssh/config
+ssh q1ops@SEU_IP
 ```
 
-### 4.2 Baixar o projeto
-Se perguntar "continue connecting", digite `yes`.
+2. Como o repositório é **privado**, a VPS precisa de permissão para baixá-lo. Crie uma chave para a VPS, apertando Enter em todas as perguntas:
+```bash
+ssh-keygen -t ed25519 -C vps-quantum-one
+```
+```bash
+cat ~/.ssh/id_ed25519.pub
+```
+Copie a linha que aparecer.
+
+3. No navegador, abra https://github.com/bielzinxxn/quantum-one/settings/keys e clique em **Add deploy key**:
+   - **Title:** `VPS`
+   - **Key:** cole a linha
+   - **NÃO** marque "Allow write access" (a VPS só precisa ler)
+   - Clique em **Add key**.
+
+4. De volta à VPS, baixe o projeto. Se perguntar `continue connecting?`, digite `yes`:
 ```bash
 git clone git@github.com:bielzinxxn/quantum-one.git && cd quantum-one
 ```
 
-### 4.3 Gerar as senhas internas e subir
-O build demora alguns minutos na primeira vez.
+---
+
+## Parte 5 — Ligar o sistema (15 min)
+
+Ainda na VPS, dentro da pasta `quantum-one`:
+
+1. Gere as senhas internas automaticamente:
 ```bash
 make env
 ```
+
+2. Monte o sistema. Na primeira vez leva alguns minutos:
 ```bash
 make build
 ```
+
+3. Ligue o sistema:
 ```bash
 make up
 ```
+
+4. Rode o teste completo:
 ```bash
 make smoke
 ```
-O esperado é a última linha mostrar **SMOKE OK**. Nesse momento ainda vai aparecer `exchange.state = credentials_missing`. Isso é normal, porque a chave da Binance vem na Parte 5.
+✅ **Deu certo** se a última linha for `SMOKE OK`. Se aparecer `FALHA`, pare aqui e me mande a saída.
 
 ---
 
-## Parte 5 — Binance: conta e chave SOMENTE LEITURA (20 min)
+## Parte 6 — Criar a chave da Binance, só leitura (15 min)
 
-### 5.1 Conta
-1. Crie a conta em binance.com e faça a verificação de identidade (KYC).
-2. Ligue a **autenticação em dois fatores (2FA)**, com um app autenticador. Sem 2FA a Binance não deixa criar chave de API.
-3. **Não deposite nada.** Não é necessário nesta fase.
-
-### 5.2 Gerar o par de chaves NA VPS
-A chave privada nasce e fica na VPS. A Binance só recebe a pública.
+1. Na VPS, gere a chave. A parte **privada** fica guardada na VPS; só a **pública** vai para a Binance:
 ```bash
-umask 077 && mkdir -p ~/binance-keys && openssl genpkey -algorithm ed25519 -out ~/binance-keys/private.pem
+mkdir -p ~/binance-keys && chmod 700 ~/binance-keys
+```
+```bash
+openssl genpkey -algorithm ed25519 -out ~/binance-keys/private.pem && chmod 600 ~/binance-keys/private.pem
 ```
 ```bash
 openssl pkey -in ~/binance-keys/private.pem -pubout
 ```
-Copie tudo o que aparecer, **incluindo** as linhas `-----BEGIN PUBLIC KEY-----` e `-----END PUBLIC KEY-----`.
+Copie as **3 linhas** que aparecerem: `-----BEGIN PUBLIC KEY-----`, a linha do meio e `-----END PUBLIC KEY-----`.
 
-### 5.3 Criar a API na Binance
-1. No site da Binance: **Perfil → API Management → Create API**.
-2. Escolha a opção de chave **Ed25519**. A interface pode chamar de "Self-generated" ou "auto-gerada", e os nomes podem mudar.
-3. Cole a chave **pública** do passo 5.2 e confirme com o 2FA.
-4. Nas permissões, deixe **somente "Enable Reading"**. NÃO marque Spot Trading, Withdrawals (saque), Margin, Futures nem transferências.
-5. Em restrição de IP, escolha **"Restrict access to trusted IPs only"** e coloque o **IP da VPS**.
-6. Copie o **API Key** que a Binance mostrar.
-
-### 5.4 Colocar a chave no sistema
-Na VPS, dentro da pasta `quantum-one`, gere a linha da chave privada já no formato certo:
+2. Descubra o IP da VPS como a Binance vai enxergá-lo:
 ```bash
-printf 'BINANCE_API_SECRET="%s"\n' "$(awk 'BEGIN{ORS="\\n"} {print}' ~/binance-keys/private.pem | sed 's/\\n$//')"
+curl -4 ifconfig.me
 ```
-Abra o arquivo de configuração:
+
+3. No site da Binance: **Perfil → Gerenciamento de API → Criar API**.
+   - Escolha o tipo de chave **gerada por você** (Ed25519; pode aparecer como "Self-generated" ou "Autogerada").
+   - Cole a chave **pública** do item 1.
+   - Confirme com o seu 2FA.
+
+4. Na chave criada, clique em **Editar restrições** e deixe assim:
+   - ✅ **Ativar leitura** (Enable Reading)
+   - ❌ **Spot & Margin Trading desmarcado**
+   - ❌ **Saques desmarcados**
+   - ❌ Margem, futuros e transferências: tudo desmarcado
+   - **Restrição de IP:** escolha "Restringir a IPs confiáveis" e coloque o IP do item 2
+
+   Salve. A Binance vai mostrar a **API Key**, um código longo. Deixe essa tela aberta.
+
+5. Na VPS, grave a chave no sistema com o comando abaixo. Quando ele pedir, **cole a API Key** e aperte Enter. Ela não aparece na tela, e isso é normal:
 ```bash
-nano .env
+make set-binance-key PEM=~/binance-keys/private.pem
 ```
-No `nano`, procure as duas linhas abaixo e troque os valores:
-- `BINANCE_API_KEY=__placeholder__`: troque `__placeholder__` pelo **API Key** que a Binance mostrou.
-- `BINANCE_API_SECRET=__placeholder__`: apague a linha inteira e cole a linha que o comando `printf` imprimiu.
 
-Para salvar e sair: **Ctrl+O**, **Enter**, **Ctrl+X**.
-
-### 5.5 Reiniciar e testar
+6. Reinicie e teste a conexão com a Binance:
 ```bash
-docker compose up -d
+make up
 ```
 ```bash
 make check-binance
 ```
-O esperado é ver **[OK]** em tudo e a linha "política da chave atendida". Os saldos aparecem zerados, e tudo bem.
-Se aparecer **[FALHA]**, a própria mensagem diz o motivo, por exemplo "saque habilitado" ou "sem restrição de IP". Corrija na Binance e rode de novo.
+✅ **Deu certo** se aparecer `[OK] política da chave atendida` e os seus saldos.
+
+❌ Se aparecer `[FALHA] chave: ...`, a frase diz o que está errado (por exemplo "saque habilitado"). Corrija na Binance e rode `make check-binance` de novo.
 
 ---
 
-## Parte 6 — Conferir o Market Scanner (depois de 15 min ligado)
+## Parte 7 — Conferir o scanner (espere 15 minutos depois da Parte 6)
 
-Estado do scanner. O esperado é `"connected": true`, `"universe"` perto de 30 e `"stale": 0`:
+1. Estado geral:
 ```bash
-docker compose exec marketdata python -c "import urllib.request as u; print(u.urlopen('http://127.0.0.1:8080/health/ready').read().decode())"
+make status
 ```
-Velas da última hora do BTC. O esperado é **60**:
+✅ No bloco `marketdata`, procure `"connected": true` e `"stale": 0`. No bloco `trader`, procure `"state": "ok"` e `"trading_state": "BLOCKED"`. BLOCKED é o certo: o sistema ainda não tem permissão para operar.
+
+2. Velas gravadas. Depois de 1 hora ligado, cada par deve ter **60**:
 ```bash
-docker compose exec postgres psql -U postgres -d quantum_one -c "SELECT count(*) FROM q1.candles WHERE symbol='BTCUSDT' AND open_time > now() - interval '1 hour';"
+make velas
 ```
 
 ---
 
-## Parte 7 — O que me mandar
-Copie e cole aqui a **saída** destes três comandos. Se quiser, apague os valores dos saldos antes:
-1. `make smoke`, só as linhas finais
-2. `make check-binance`
-3. Os dois comandos da Parte 6
+## Deu erro? Me mande isto
 
-**Nunca** cole o conteúdo do `.env`, do `private.pem` ou o API Key.
+- O **comando** que você rodou e a **mensagem de erro**, copiada inteira.
+- O resultado de:
+```bash
+make status
+```
+```bash
+make logs s=marketdata
+```
+Para sair dos logs, aperte **Ctrl+C**.
 
----
+**Nunca mande:** o arquivo `.env`, o `private.pem` ou a API Key.
 
-## Comandos úteis depois
+## Comandos do dia a dia (sempre dentro de `~/quantum-one`)
+
 | Para… | Comando |
 |---|---|
-| Entrar na VPS (no PowerShell) | `ssh q1ops@SEU_IP` e depois `cd quantum-one` |
-| Ver se está tudo de pé | `make ps` |
-| Ver os logs de um serviço | `make logs s=marketdata` (Ctrl+C para sair) |
-| Parar tudo | `make down` |
-| Ligar de novo | `make up` |
-| Atualizar para a versão nova do código | `git pull && make build && make up` |
+| ver se está tudo bem | `make status` |
+| ligar | `make up` |
+| desligar | `make down` |
+| ver os logs | `make logs s=marketdata` |
+| atualizar o código depois de uma fase nova | `git pull && make build && make up` |

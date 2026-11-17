@@ -1,6 +1,8 @@
 # QUANTUM ONE
 
-Infraestrutura proprietária de trading quantitativo (Binance spot). Documentação em [`docs/`](docs/README.md); estado atual em [`docs/ESTADO_DO_PROJETO.md`](docs/ESTADO_DO_PROJETO.md).
+Infraestrutura proprietária de trading quantitativo (Binance spot).
+
+**Primeira vez? Siga o [guia passo a passo](docs/GUIA_PASSO_A_PASSO.md).** Documentação em [`docs/`](docs/README.md); estado atual em [`docs/ESTADO_DO_PROJETO.md`](docs/ESTADO_DO_PROJETO.md).
 
 > **Primeira vez? Siga o [guia passo a passo](docs/GUIA_PASSO_A_PASSO.md)** (Windows → VPS → Binance).
 

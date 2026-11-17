@@ -68,3 +68,18 @@ async def test_docker_healthcheck_cli() -> None:
 def test_healthcheck_main_uses_env_port(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("HEALTH_PORT", str(_free_port()))
     assert healthcheck.main([]) == 1  # nada escutando → falha
+
+
+async def test_status_cli_prints_body_even_when_not_ready() -> None:
+    from quantum_one.services import status
+
+    state = HealthState("trader", "0", extra={"trading_state": "BLOCKED"})
+    port = _free_port()
+    runner = await health_server.start(health_server.build_app(state, 10), "127.0.0.1", port)
+    try:
+        data = await asyncio.to_thread(status.fetch, f"http://127.0.0.1:{port}/health/ready")
+        assert data["ready"] is False and data["trading_state"] == "BLOCKED"
+    finally:
+        await runner.cleanup()
+    down = await asyncio.to_thread(status.fetch, f"http://127.0.0.1:{port}/health/ready", 0.5)
+    assert "erro" in down

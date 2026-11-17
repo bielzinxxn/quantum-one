@@ -4,7 +4,7 @@ COMPOSE := docker compose
 COMPOSE_DEV := docker compose -f docker-compose.yml -f docker-compose.dev.yml
 BACKEND := cd backend &&
 
-.PHONY: help env build up down ps logs migrate test test-integration lint typecheck check smoke backup check-binance
+.PHONY: help env build up down ps logs migrate test test-integration lint typecheck check smoke backup check-binance status velas set-binance-key
 
 help: ## lista os comandos
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-18s %s\n", $$1, $$2}'
@@ -54,3 +54,12 @@ backup: ## dump do Postgres comprimido (e cifrado se AGE_RECIPIENT estiver defin
 
 check-binance: ## diagnóstico da Binance (relógio, chave, conta) — rode na VPS
 	$(COMPOSE) run --rm --no-deps trader python -m quantum_one.services.check_binance
+
+status: ## estado do scanner e da conexão com a Binance (JSON)
+	@for s in marketdata trader; do echo "== $$s =="; $(COMPOSE) exec -T $$s python -m quantum_one.services.status; done
+
+velas: ## velas de 1m gravadas na última hora, por par (esperado: 60)
+	@$(COMPOSE) exec -T postgres psql -U postgres -d quantum_one -c "SELECT symbol, count(*) AS velas_ultima_hora FROM q1.candles WHERE open_time > now() - interval '1 hour' GROUP BY symbol ORDER BY symbol;"
+
+set-binance-key: ## grava a chave Ed25519 no .env (ex.: make set-binance-key PEM=~/binance-keys/private.pem)
+	python3 infra/scripts/set_binance_key.py $(PEM)
