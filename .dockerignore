@@ -1,0 +1,14 @@
+# o contexto de build NUNCA leva segredos, dados ou caches
+.env
+.env.*
+.git
+data/
+backups/
+docs/
+**/__pycache__
+**/.venv
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/node_modules
+backend/tests

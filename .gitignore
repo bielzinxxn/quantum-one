@@ -1,0 +1,33 @@
+# segredos — NUNCA versionar
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# dados e backups
+data/
+backups/
+*.parquet
+*.dump
+*.sql.gz
+*.age
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# node
+node_modules/
+.next/
+
+# editores / SO
+.idea/
+.vscode/
+.DS_Store
