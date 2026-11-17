@@ -4,7 +4,7 @@ Infraestrutura proprietária de trading quantitativo (Binance spot).
 
 Documentação em [`docs/`](docs/README.md); estado atual em [`docs/ESTADO_DO_PROJETO.md`](docs/ESTADO_DO_PROJETO.md).
 
-> **Primeira vez? Siga o [guia passo a passo](docs/GUIA_PASSO_A_PASSO.md)** (Windows → VPS → Binance).
+> **Primeira vez?** No seu Windows (grátis, para validar): [guia Windows](docs/GUIA_WINDOWS_LOCAL.md) · Numa VPS (24/7): [guia VPS](docs/GUIA_PASSO_A_PASSO.md).
 
 ## Pré-requisitos
 - Docker Engine 24+ com Compose v2
